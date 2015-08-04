@@ -357,6 +357,8 @@ typedef void (^PINDiskCacheObjectBlock)(PINDiskCache *cache, NSString *key, id <
  */
 - (void)enumerateObjectsWithBlock:(nullable PINDiskCacheObjectBlock)block;
 
+- (NSURL *)setData:(NSData *)data forKey:(NSString *)key;
+
 @end
 
 NS_ASSUME_NONNULL_END
