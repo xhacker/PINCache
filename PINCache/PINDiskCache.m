@@ -1104,7 +1104,7 @@ static NSString * const PINDiskCacheSharedName = @"PINDiskCacheShared";
     dispatch_semaphore_signal(_lockSemaphore);
 }
 
-- (NSURL *)setData:(NSData *)data forKey:(NSString *)key
+- (NSURL *)setData:(NSData *)data forKey:(NSString *)key extension:(NSString *)extension
 {
     NSDate *now = [[NSDate alloc] init];
     
@@ -1117,6 +1117,10 @@ static NSString * const PINDiskCacheSharedName = @"PINDiskCacheShared";
     
     [self lock];
     fileURL = [self encodedFileURLForKey:key];
+
+    if (extension) {
+        fileURL = [NSURL URLWithString:[fileURL.absoluteString stringByAppendingString:extension]];
+    }
     
     if (self->_willAddObjectBlock)
         self->_willAddObjectBlock(self, key, data, fileURL);
@@ -1149,6 +1153,46 @@ static NSString * const PINDiskCacheSharedName = @"PINDiskCacheShared";
     [task end];
     
     return fileURL;
+}
+
+- (NSURL *)fileURLForKey:(NSString *)key extension:(NSString *)extension
+{
+    NSDate *now = [[NSDate alloc] init];
+    
+    if (!key)
+        return nil;
+    
+    NSURL *fileURL = nil;
+    
+    [self lock];
+    fileURL = [self encodedFileURLForKey:key];
+    if (extension) {
+        fileURL = [NSURL URLWithString:[fileURL.absoluteString stringByAppendingString:extension]];
+    }
+    
+    if ([[NSFileManager defaultManager] fileExistsAtPath:[fileURL path]]) {
+        [self setFileModificationDate:now forURL:fileURL];
+    } else {
+        fileURL = nil;
+    }
+    [self unlock];
+    return fileURL;
+}
+
+- (void)fileURLForKey:(NSString *)key extension:(NSString *)extension block:(PINDiskCacheObjectBlock)block
+{
+    __weak PINDiskCache *weakSelf = self;
+    
+    dispatch_async(_asyncQueue, ^{
+        PINDiskCache *strongSelf = weakSelf;
+        NSURL *fileURL = [strongSelf fileURLForKey:key extension:extension];
+        
+        if (block) {
+            [strongSelf lock];
+                block(strongSelf, key, nil, fileURL);
+            [strongSelf unlock];
+        }
+    });
 }
 
 @end
