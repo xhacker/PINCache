@@ -1104,6 +1104,53 @@ static NSString * const PINDiskCacheSharedName = @"PINDiskCacheShared";
     dispatch_semaphore_signal(_lockSemaphore);
 }
 
+- (NSURL *)setData:(NSData *)data forKey:(NSString *)key
+{
+    NSDate *now = [[NSDate alloc] init];
+    
+    if (!key || !data)
+        return nil;
+    
+    PINBackgroundTask *task = [PINBackgroundTask start];
+    
+    NSURL *fileURL = nil;
+    
+    [self lock];
+    fileURL = [self encodedFileURLForKey:key];
+    
+    if (self->_willAddObjectBlock)
+        self->_willAddObjectBlock(self, key, data, fileURL);
+    
+    BOOL written = [data writeToURL:fileURL atomically:YES];
+    
+    if (written) {
+        [self setFileModificationDate:now forURL:fileURL];
+        
+        NSError *error = nil;
+        NSDictionary *values = [fileURL resourceValuesForKeys:@[ NSURLTotalFileAllocatedSizeKey ] error:&error];
+        PINDiskCacheError(error);
+        
+        NSNumber *diskFileSize = [values objectForKey:NSURLTotalFileAllocatedSizeKey];
+        if (diskFileSize) {
+            [self->_sizes setObject:diskFileSize forKey:key];
+            self.byteCount = self->_byteCount + [diskFileSize unsignedIntegerValue]; // atomic
+        }
+        
+        if (self->_byteLimit > 0 && self->_byteCount > self->_byteLimit)
+            [self trimToSizeByDate:self->_byteLimit block:nil];
+    } else {
+        fileURL = nil;
+    }
+    
+    if (self->_didAddObjectBlock)
+        self->_didAddObjectBlock(self, key, data, written ? fileURL : nil);
+    [self unlock];
+    
+    [task end];
+    
+    return fileURL;
+}
+
 @end
 
 @implementation PINBackgroundTask
